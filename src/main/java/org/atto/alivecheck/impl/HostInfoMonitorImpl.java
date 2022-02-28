@@ -18,10 +18,9 @@ import java.util.stream.Collectors;
 public class HostInfoMonitorImpl implements HostInfoMonitor {
 
     private final HostInfoStore hostInfoStore = HostInfoStoreTestImpl.getInstance();
-    private ExecutorService executorService;
+    private ScheduledExecutorService scheduledExecutor;
     private ForkJoinPool forkJoinAlivePool;
     private ForkJoinPool forkJoinDeadPool;
-    private ScheduledExecutorService scheduledExecutor;
 
     private static class InstanceHolder {
         private static final HostInfoMonitorImpl INSTANCE = new HostInfoMonitorImpl();
@@ -64,13 +63,10 @@ public class HostInfoMonitorImpl implements HostInfoMonitor {
 
     @Override
     public boolean isRunning() {
-        if (scheduledExecutor.isTerminated()) {
-            return true;
-        } else if (scheduledExecutor == null) {
-            return false;
-        } else {
-            return false;
+        if (scheduledExecutor == null) {
+            throw new IllegalArgumentException("There are no monitors running.");
         }
+        return !scheduledExecutor.isTerminated();
     }
 
     /**
@@ -82,7 +78,6 @@ public class HostInfoMonitorImpl implements HostInfoMonitor {
     private void createScheduler(int threadCount, int intervalMs) {
         forkJoinAlivePool = new ForkJoinPool(threadCount);
         forkJoinDeadPool = new ForkJoinPool(threadCount);
-        executorService = Executors.newFixedThreadPool(threadCount);
         scheduledExecutor = Executors.newScheduledThreadPool(1);
         scheduledExecutor.scheduleWithFixedDelay(new ScheduleRunnable(), 0, intervalMs, TimeUnit.MILLISECONDS);
     }
@@ -107,7 +102,6 @@ public class HostInfoMonitorImpl implements HostInfoMonitor {
         if (!deadList.isEmpty()) {
             for (HostInfo hostInfo : deadList) {
                 forkJoinDeadPool.submit(() -> aliveCheckTask(hostInfo));
-//                executorService.submit(() -> aliveCheckTask(hostInfo));
             }
             log.info("*** check dead *** {}", deadList);
         }
@@ -150,7 +144,6 @@ public class HostInfoMonitorImpl implements HostInfoMonitor {
      * 스케줄러 즉시 종료 메서드.
      */
     private void stopNowScheduler() {
-//        executorService.shutdownNow();
         scheduledExecutor.shutdownNow();
         forkJoinAlivePool.shutdownNow();
         forkJoinDeadPool.shutdownNow();
@@ -161,7 +154,6 @@ public class HostInfoMonitorImpl implements HostInfoMonitor {
      * 스케줄러 종료 메서드. (제출된 모든 작업이 완료 후)
      */
     private void stopScheduler() {
-        executorService.shutdown();
         scheduledExecutor.shutdown();
         forkJoinAlivePool.shutdown();
         log.info("Monitoring is stopped. {}");
